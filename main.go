@@ -20,7 +20,7 @@ func main() {
 }
 
 func run(fname string) error {
-	_, err := os.Stdout.Write(makeMLT(fname))
+	_, err := os.Stdout.Write(makeMLT2(fname))
 	if err != nil {
 		return err
 	}
@@ -32,6 +32,41 @@ type vInfo struct {
 	width  string
 	height string
 	length string
+}
+
+func newVInfo(fname string) vInfo {
+	cmd := exec.Command(
+		"ffprove", "-hide_banner",
+		"-i", fname,
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err != nil {
+		fmt.Printf("Stdout: %s\n", stdout.String())
+		fmt.Printf("Stderr: %s\n", stderr.String())
+	}
+	buf := stderr.String()
+	lines := strings.Split(buf, "\n")
+	vi := vInfo{fname: fname, width: "", height: "", length: ""}
+	for _, line := range lines {
+		if strings.HasPrefix(line, "  Duration: ") {
+			l := strings.TrimLeft(line, " ")
+			items := strings.Split(l, " ")
+			item := strings.TrimRight(items[1], ",")
+			vi.length = item
+		}
+		if strings.Contains(line, " Video: ") && vi.width == "" {
+			items := strings.Split(line, ",")
+			item := strings.TrimLeft(items[2], " ")
+			wh := strings.Split(item, "x")
+			vi.width = wh[0]
+			vi.height = wh[1]
+		}
+	}
+	return vi
 }
 
 type chain struct {
@@ -61,23 +96,9 @@ func makeMLT(fname string) []byte {
 	buf := stderr.String()
 	lines := strings.Split(buf, "\n")
 	chains := []chain{}
-	vi := vInfo{fname: fname, width: "", height: "", length: ""}
 	i := 0
 	start := "00:00:00.000"
 	for _, line := range lines {
-		if strings.HasPrefix(line, "  Duration: ") {
-			l := strings.TrimLeft(line, " ")
-			items := strings.Split(l, " ")
-			item := strings.TrimRight(items[1], ",")
-			vi.length = item
-		}
-		if strings.Contains(line, " Video: ") && vi.width == "" {
-			items := strings.Split(line, ",")
-			item := strings.TrimLeft(items[2], " ")
-			wh := strings.Split(item, "x")
-			vi.width = wh[0]
-			vi.height = wh[1]
-		}
 		if strings.HasPrefix(line, "[silencedetect ") {
 			l := strings.Trim(line, "\r\n")
 			items := strings.Split(l, " ")
@@ -88,7 +109,38 @@ func makeMLT(fname string) []byte {
 			i = i + 1
 		}
 	}
-	res := makeXML(vi, chains)
+	res := makeXML(newVInfo(fname), chains)
+	return res
+}
+
+func makeMLT2(fname string) []byte {
+	buf, _ := os.ReadFile(fname + ".txt")
+	lines := strings.Split(string(buf), "\n")
+	chains := []chain{}
+	i := 0
+	start := "00:00:00.000"
+	for _, line := range lines {
+		items := strings.Split(line, " ")
+		// fmt.Println(items)
+		if len(items) != 2 {
+			continue
+		}
+		f := toTime(items[0])
+		t := toTime(items[1])
+		if i == 0 && f != "00:00:00.000" {
+			chain := chain{num: i, in: start, out: f}
+			chains = append(chains, chain)
+			start = t
+			i = i + 1
+			continue
+		}
+		chains = append(chains, chain{num: i, in: start, out: f})
+		i = i + 1
+		chains = append(chains, chain{num: i, in: f, out: t})
+		start = t
+		i = i + 1
+	}
+	res := makeXML(newVInfo(fname), chains)
 	return res
 }
 
