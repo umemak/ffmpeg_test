@@ -20,7 +20,7 @@ func main() {
 }
 
 func run(fname string) error {
-	_, err := os.Stdout.Write(makeMLT2(fname))
+	_, err := os.Stdout.Write(makeMLT(fname))
 	if err != nil {
 		return err
 	}
@@ -36,7 +36,7 @@ type vInfo struct {
 
 func newVInfo(fname string) vInfo {
 	cmd := exec.Command(
-		"ffprove", "-hide_banner",
+		"ffprobe", "-hide_banner",
 		"-i", fname,
 	)
 	var stdout bytes.Buffer
@@ -76,71 +76,28 @@ type chain struct {
 }
 
 func makeMLT(fname string) []byte {
-	cmd := exec.Command(
-		"ffmpeg", "-hide_banner",
-		"-i", fname,
-		"-af", "silencedetect=noise=-50dB:d=0.3",
-		// "-af", "silencedetect",
-		"-f", "null",
-		"-",
-	)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if err != nil {
-		fmt.Printf("Stdout: %s\n", stdout.String())
-		fmt.Printf("Stderr: %s\n", stderr.String())
-	}
-	buf := stderr.String()
-	lines := strings.Split(buf, "\n")
-	chains := []chain{}
-	i := 0
-	start := "00:00:00.000"
-	for _, line := range lines {
-		if strings.HasPrefix(line, "[silencedetect ") {
-			l := strings.Trim(line, "\r\n")
-			items := strings.Split(l, " ")
-			t := toTime(items[4])
-			chain := chain{num: i, in: start, out: t}
-			chains = append(chains, chain)
-			start = t
-			i = i + 1
-		}
-	}
-	res := makeXML(newVInfo(fname), chains)
-	return res
-}
-
-func makeMLT2(fname string) []byte {
 	buf, _ := os.ReadFile(fname + ".txt")
 	lines := strings.Split(string(buf), "\n")
 	chains := []chain{}
 	i := 0
 	start := "00:00:00.000"
 	for _, line := range lines {
-		items := strings.Split(line, " ")
-		// fmt.Println(items)
-		if len(items) != 2 {
+		if line == "" {
 			continue
 		}
-		f := toTime(items[0])
-		t := toTime(items[1])
-		if i == 0 && f != "00:00:00.000" {
-			chain := chain{num: i, in: start, out: f}
-			chains = append(chains, chain)
-			start = t
-			i = i + 1
+		t := toTime(line)
+		if t == "00:00:00.000" {
 			continue
 		}
-		chains = append(chains, chain{num: i, in: start, out: f})
-		i = i + 1
-		chains = append(chains, chain{num: i, in: f, out: t})
+		chains = append(chains, chain{num: i, in: start, out: t})
 		start = t
 		i = i + 1
 	}
-	res := makeXML(newVInfo(fname), chains)
+	vi := newVInfo(fname)
+	if start != vi.length {
+		chains = append(chains, chain{num: i, in: start, out: vi.length})
+	}
+	res := makeXML(vi, chains)
 	return res
 }
 

@@ -156,5 +156,6 @@ class MovieHelper:
         for i, block in enumerate(keep_blocks):
             fr = max(block["from"] / frequency - padding_time, 0)
             to = min(block["to"] / frequency + padding_time, len(data) / frequency)
-            print('%s %s' % (fr, to))
+            print(fr)
+            print(to)
         return self.movie_dividing_filepath
