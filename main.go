@@ -12,14 +12,21 @@ import (
 
 func main() {
 	flag.Parse()
-	err := run(flag.Arg(0))
+	err := run(flag.Arg(0), flag.Arg(1))
 	if err != nil {
 		fmt.Printf("%+v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(fname string) error {
+func run(fname string, mode string) error {
+	if mode == "del" {
+		_, err := os.Stdout.Write(makeMLT2(fname))
+		if err != nil {
+			return err
+		}
+		return nil
+	}
 	_, err := os.Stdout.Write(makeMLT(fname))
 	if err != nil {
 		return err
@@ -97,6 +104,25 @@ func makeMLT(fname string) []byte {
 	if start != vi.length {
 		chains = append(chains, chain{num: i, in: start, out: vi.length})
 	}
+	res := makeXML(vi, chains)
+	return res
+}
+
+func makeMLT2(fname string) []byte {
+	buf, _ := os.ReadFile(fname + ".txt")
+	lines := strings.Split(string(buf), "\n")
+	chains := []chain{}
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		if line == "" {
+			continue
+		}
+		f := toTime(line)
+		i = i + 1
+		t := toTime(lines[i])
+		chains = append(chains, chain{num: i, in: f, out: t})
+	}
+	vi := newVInfo(fname)
 	res := makeXML(vi, chains)
 	return res
 }
