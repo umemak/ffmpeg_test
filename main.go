@@ -27,6 +27,13 @@ func run(fname string, mode string) error {
 		}
 		return nil
 	}
+	if mode == "vtt" {
+		_, err := os.Stdout.Write(makeMLT3(fname))
+		if err != nil {
+			return err
+		}
+		return nil
+	}
 	_, err := os.Stdout.Write(makeMLT(fname))
 	if err != nil {
 		return err
@@ -77,9 +84,10 @@ func newVInfo(fname string) vInfo {
 }
 
 type chain struct {
-	num int
-	in  string
-	out string
+	num  int
+	in   string
+	out  string
+	text string
 }
 
 func makeMLT(fname string) []byte {
@@ -121,6 +129,28 @@ func makeMLT2(fname string) []byte {
 		i = i + 1
 		t := toTime(lines[i])
 		chains = append(chains, chain{num: i, in: f, out: t})
+	}
+	vi := newVInfo(fname)
+	res := makeXML(vi, chains)
+	return res
+}
+
+func makeMLT3(fname string) []byte {
+	buf, _ := os.ReadFile(fname + ".vtt")
+	lines := strings.Split(string(buf), "\n")
+	chains := []chain{}
+	n := 0
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		if strings.Contains(line, " --> ") {
+			c := chain{num: n}
+			items := strings.Split(line, " --> ")
+			c.in = items[0]
+			c.out = items[1]
+			i++
+			c.text = lines[i]
+			chains = append(chains, c)
+		}
 	}
 	vi := newVInfo(fname)
 	res := makeXML(vi, chains)
@@ -173,12 +203,20 @@ func makeXML(vi vInfo, chains []chain) []byte {
     <property name="xml">was here</property>
   </chain>
 `
+		if c.text != "" {
+			break
+		}
 	}
 	res += `	<playlist id="playlist0">
     <property name="shotcut:video">1</property>
     <property name="shotcut:name">V1</property>
 `
 	for _, c := range chains {
+		if c.text != "" {
+			res += `    <entry producer="chain` + fmt.Sprint(c.num) + `" in="00:00:00.000" out="` + vi.length + `"/>
+			`
+			break
+		}
 		res += `    <entry producer="chain` + fmt.Sprint(c.num) + `" in="` + c.in + `" out="` + c.out + `"/>
 `
 	}
@@ -188,7 +226,23 @@ func makeXML(vi vInfo, chains []chain) []byte {
     <property name="shotcut">1</property>
     <property name="shotcut:projectAudioChannels">2</property>
     <property name="shotcut:projectFolder">0</property>
-    <track producer="background"/>
+`
+	if chains[0].text != "" {
+		res += `	<properties name="shotcut:markers">
+`
+		for i, c := range chains {
+			res += `	<properties name="` + fmt.Sprint(i) + `">
+		  <property name="text">` + c.text + `</property>
+		  <property name="start">` + c.in + `</property>
+		  <property name="end">` + c.out + `</property>
+		  <property name="color">#008000</property>
+		</properties>
+`
+		}
+		res += `	  </properties>
+  `
+	}
+	res += `	<track producer="background"/>
     <track producer="playlist0"/>
     <transition id="transition0">
       <property name="a_track">0</property>

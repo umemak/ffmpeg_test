@@ -106,6 +106,8 @@ class MovieHelper:
                           ]
         subprocess.run(command_output)
 
+        # return
+
         # 音声ファイル読込
         data, frequency = sf.read(self.wave_filepath)  # file:音声ファイルのパス
         # 一定のレベル(振幅)以上の周波数にフラグを立てる
