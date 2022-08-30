@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/xml"
 	"flag"
 	"fmt"
 	"os"
@@ -27,8 +28,15 @@ func run(fname string, mode string) error {
 		}
 		return nil
 	}
-	if mode == "vtt" {
-		_, err := os.Stdout.Write(makeMLT3(fname))
+	if mode == "vtt2mlt" {
+		_, err := os.Stdout.Write(vtt2mlt(fname))
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	if mode == "mlt2vtt" {
+		_, err := os.Stdout.Write(mlt2vtt(fname))
 		if err != nil {
 			return err
 		}
@@ -135,7 +143,7 @@ func makeMLT2(fname string) []byte {
 	return res
 }
 
-func makeMLT3(fname string) []byte {
+func vtt2mlt(fname string) []byte {
 	buf, _ := os.ReadFile(fname + ".vtt")
 	lines := strings.Split(string(buf), "\n")
 	chains := []chain{}
@@ -155,6 +163,159 @@ func makeMLT3(fname string) []byte {
 	vi := newVInfo(fname)
 	res := makeXML(vi, chains)
 	return res
+}
+
+type Mlt struct {
+	XMLName      xml.Name `xml:"mlt"`
+	Text         string   `xml:",chardata"`
+	LCNUMERIC    string   `xml:"LC_NUMERIC,attr"`
+	Version      string   `xml:"version,attr"`
+	Title        string   `xml:"title,attr"`
+	AttrProducer string   `xml:"producer,attr"`
+	Profile      struct {
+		Text             string `xml:",chardata"`
+		Description      string `xml:"description,attr"`
+		Width            string `xml:"width,attr"`
+		Height           string `xml:"height,attr"`
+		Progressive      string `xml:"progressive,attr"`
+		SampleAspectNum  string `xml:"sample_aspect_num,attr"`
+		SampleAspectDen  string `xml:"sample_aspect_den,attr"`
+		DisplayAspectNum string `xml:"display_aspect_num,attr"`
+		DisplayAspectDen string `xml:"display_aspect_den,attr"`
+		FrameRateNum     string `xml:"frame_rate_num,attr"`
+		FrameRateDen     string `xml:"frame_rate_den,attr"`
+		Colorspace       string `xml:"colorspace,attr"`
+	} `xml:"profile"`
+	Chain []struct {
+		Text     string `xml:",chardata"`
+		ID       string `xml:"id,attr"`
+		Out      string `xml:"out,attr"`
+		Property []struct {
+			Text string `xml:",chardata"`
+			Name string `xml:"name,attr"`
+		} `xml:"property"`
+		Filter struct {
+			Text     string `xml:",chardata"`
+			ID       string `xml:"id,attr"`
+			Out      string `xml:"out,attr"`
+			Property []struct {
+				Text string `xml:",chardata"`
+				Name string `xml:"name,attr"`
+			} `xml:"property"`
+		} `xml:"filter"`
+	} `xml:"chain"`
+	Producer []struct {
+		Text     string `xml:",chardata"`
+		ID       string `xml:"id,attr"`
+		In       string `xml:"in,attr"`
+		Out      string `xml:"out,attr"`
+		Property []struct {
+			Text string `xml:",chardata"`
+			Name string `xml:"name,attr"`
+		} `xml:"property"`
+		Filter struct {
+			Text     string `xml:",chardata"`
+			ID       string `xml:"id,attr"`
+			Out      string `xml:"out,attr"`
+			Property []struct {
+				Text string `xml:",chardata"`
+				Name string `xml:"name,attr"`
+			} `xml:"property"`
+		} `xml:"filter"`
+	} `xml:"producer"`
+	Playlist []struct {
+		Text     string `xml:",chardata"`
+		ID       string `xml:"id,attr"`
+		Title    string `xml:"title,attr"`
+		Property []struct {
+			Text string `xml:",chardata"`
+			Name string `xml:"name,attr"`
+		} `xml:"property"`
+		Entry []struct {
+			Text     string `xml:",chardata"`
+			Producer string `xml:"producer,attr"`
+			In       string `xml:"in,attr"`
+			Out      string `xml:"out,attr"`
+		} `xml:"entry"`
+		Blank struct {
+			Text   string `xml:",chardata"`
+			Length string `xml:"length,attr"`
+		} `xml:"blank"`
+	} `xml:"playlist"`
+	Tractor struct {
+		Text     string `xml:",chardata"`
+		ID       string `xml:"id,attr"`
+		Title    string `xml:"title,attr"`
+		In       string `xml:"in,attr"`
+		Out      string `xml:"out,attr"`
+		Property []struct {
+			Text string `xml:",chardata"`
+			Name string `xml:"name,attr"`
+		} `xml:"property"`
+		Properties struct {
+			Text       string `xml:",chardata"`
+			Name       string `xml:"name,attr"`
+			Properties []struct {
+				Text     string `xml:",chardata"`
+				Name     string `xml:"name,attr"`
+				Property []struct {
+					Text string `xml:",chardata"`
+					Name string `xml:"name,attr"`
+				} `xml:"property"`
+			} `xml:"properties"`
+		} `xml:"properties"`
+		Track []struct {
+			Text     string `xml:",chardata"`
+			Producer string `xml:"producer,attr"`
+		} `xml:"track"`
+		Transition []struct {
+			Text     string `xml:",chardata"`
+			ID       string `xml:"id,attr"`
+			Property []struct {
+				Text string `xml:",chardata"`
+				Name string `xml:"name,attr"`
+			} `xml:"property"`
+		} `xml:"transition"`
+	} `xml:"tractor"`
+}
+
+type marker struct {
+	text  string
+	start string
+	end   string
+	color string
+}
+
+func mlt2vtt(fname string) []byte {
+	buf, _ := os.ReadFile(fname + ".mlt")
+	mlt := Mlt{}
+	err := xml.Unmarshal(buf, &mlt)
+	if err != nil {
+		fmt.Printf("%v", err)
+		return nil
+	}
+	fmt.Printf("WebVTT\n\n")
+	if mlt.Tractor.Properties.Name == "shotcut:markers" {
+		for i, ps := range mlt.Tractor.Properties.Properties {
+			fmt.Println(i)
+			m := marker{}
+			for _, p := range ps.Property {
+				switch p.Name {
+				case "text":
+					m.text = p.Text
+				case "start":
+					m.start = p.Text
+				case "end":
+					m.end = p.Text
+				case "color":
+					m.color = p.Text
+				}
+			}
+			fmt.Printf("%s --> %s\n", m.start, m.end)
+			fmt.Printf("%s\n\n", m.text)
+		}
+	}
+	return []byte{}
 }
 
 func toTime(str string) string {
