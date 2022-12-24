@@ -28,6 +28,13 @@ func run(fname string, mode string) error {
 		}
 		return nil
 	}
+	if mode == "mark" {
+		_, err := os.Stdout.Write(makeMLT3(fname))
+		if err != nil {
+			return err
+		}
+		return nil
+	}
 	if mode == "vtt2mlt" {
 		_, err := os.Stdout.Write(vtt2mlt(fname))
 		if err != nil {
@@ -137,6 +144,25 @@ func makeMLT2(fname string) []byte {
 		i = i + 1
 		t := toTime(lines[i])
 		chains = append(chains, chain{num: i, in: f, out: t})
+	}
+	vi := newVInfo(fname)
+	res := makeXML(vi, chains)
+	return res
+}
+
+func makeMLT3(fname string) []byte {
+	buf, _ := os.ReadFile(fname + ".txt")
+	lines := strings.Split(string(buf), "\n")
+	chains := []chain{}
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		if line == "" {
+			continue
+		}
+		f := toTime(line)
+		i = i + 1
+		t := toTime(lines[i])
+		chains = append(chains, chain{num: i, in: f, out: t, text: "Marker" + fmt.Sprint(i)})
 	}
 	vi := newVInfo(fname)
 	res := makeXML(vi, chains)
